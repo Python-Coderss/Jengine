@@ -5,14 +5,17 @@ in vec3 a_position;
 
 in vec3 a_instance_offset;
 in vec2 a_instance_size;
-in vec3 a_instance_color;
+// in vec3 a_instance_color; // Removed
+in vec3 a_voxel_tex_coord; // Added
 in float a_instance_normal_idx;
 
 uniform mat4 u_projectionViewMatrix;
+uniform sampler3D u_voxelDataTexture; // Added
 
 out vec3 v_world_position;
 out vec3 v_normal_worldspace;
-out vec3 v_color;
+// out vec3 v_color; // Removed
+out float v_voxel_type; // Added
 
 const vec3 normals[6] = vec3[](
     vec3(1.0,0.0,0.0), vec3(-1.0,0.0,0.0), vec3(0.0,1.0,0.0),
@@ -28,10 +31,12 @@ const vec2 quad_verts[4] = vec2[](
 );
 
 void main() {
-    v_color = a_instance_color;
+    // v_color = a_instance_color; // Removed
     int normalIdx = int(a_instance_normal_idx + 0.01); // Add small epsilon for float to int conversion
     if (normalIdx < 0) normalIdx = 0; if (normalIdx > 5) normalIdx = 5; // Clamp index
     v_normal_worldspace = normals[normalIdx];
+    vec3 normalized_tex_coord = a_voxel_tex_coord; // Assuming these are already 0-1
+    v_voxel_type = texture(u_voxelDataTexture, normalized_tex_coord).r;
 
     vec3 quad_unit_vertex = a_position; // This is (0,0,0), (1,0,0), (1,1,0), or (0,1,0)
     vec3 transformed_pos_on_plane;
