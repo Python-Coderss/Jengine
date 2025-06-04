@@ -1,0 +1,59 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        google()
+        gradlePluginPortal()
+        maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+    }
+    dependencies {
+        classpath 'org.wisepersist:gwt-gradle-plugin:1.1.16'
+        classpath 'org.gretty:gretty:3.1.0'
+        classpath 'com.android.tools.build:gradle:7.4.2'
+    }
+}
+
+allprojects {
+    apply plugin: "eclipse"
+    apply plugin: "idea"
+}
+
+configure(subprojects - project(":android")) {
+    apply plugin: "java-library"
+    sourceCompatibility = 1.8
+    compileJava {
+        options.incremental = true
+    }
+}
+
+subprojects {
+    version = '1.0'
+    ext.appName = 'myengine'
+    repositories {
+        mavenCentral()
+        maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+        maven { url "https://oss.sonatype.org/content/repositories/releases/" }
+        maven { url "https://jitpack.io" }
+    }
+}
+
+project(":desktop") {
+    apply plugin: "java-library"
+    dependencies {
+        implementation project(":core")
+        api "com.badlogicgames.gdx:gdx-backend-lwjgl3:$project.gdxVersion"
+        api "com.badlogicgames.gdx:gdx-platform:$project.gdxVersion:natives-desktop"
+    }
+}
+
+project(":core") {
+    apply plugin: "java-library"
+    dependencies {
+        api "com.badlogicgames.gdx:gdx:$project.gdxVersion"
+    }
+}
+
+// Placeholder for gdxVersion, will be defined in gradle.properties
+// In a real setup, gdxVersion would be in gradle.properties
+ext {
+    gdxVersion = '1.12.1' // Example LibGDX version
+}
