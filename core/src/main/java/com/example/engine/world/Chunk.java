@@ -25,12 +25,14 @@ public class Chunk implements Disposable {
     boolean[][][][] faceMerged;
     private Texture dataTexture;
     private FloatBuffer voxelDataBuffer; // To hold data for the 3D texture
+    private boolean isDirty;
 
     public Chunk(Vector3 position) {
         this.position = position;
         voxels = new Voxel[CHUNK_SIZE_X][CHUNK_SIZE_Y][CHUNK_SIZE_Z];
         instanceData = new FloatArray(false, CHUNK_SIZE_X * CHUNK_SIZE_Y * CHUNK_SIZE_Z * 3 * FLOATS_PER_INSTANCE);
         faceMerged = new boolean[CHUNK_SIZE_X][CHUNK_SIZE_Y][CHUNK_SIZE_Z][6];
+        this.isDirty = false;
         initializeVoxels();
         generateInstanceData();
         createDataTexture();
@@ -305,5 +307,41 @@ public class Chunk implements Disposable {
             dataTexture.dispose();
         }
         // instanceData FloatArray is GC'd, no LibGDX disposables here
+    }
+
+    public Voxel getVoxel(int localX, int localY, int localZ) {
+        if (localX < 0 || localX >= CHUNK_SIZE_X ||
+            localY < 0 || localY >= CHUNK_SIZE_Y ||
+            localZ < 0 || localZ >= CHUNK_SIZE_Z) {
+            // Or throw an IllegalArgumentException, or return a static AIR voxel
+            return null;
+        }
+        return voxels[localX][localY][localZ];
+    }
+
+    public void setVoxel(int localX, int localY, int localZ, Voxel.VoxelType type) {
+        if (localX < 0 || localX >= CHUNK_SIZE_X ||
+            localY < 0 || localY >= CHUNK_SIZE_Y ||
+            localZ < 0 || localZ >= CHUNK_SIZE_Z) {
+            // Optionally log a warning or throw an exception
+            return;
+        }
+        if (voxels[localX][localY][localZ] == null || voxels[localX][localY][localZ].type != type) {
+            voxels[localX][localY][localZ] = new Voxel(type); // Assuming Voxel constructor takes type
+            this.isDirty = true;
+        }
+    }
+
+    public void clearVoxel(int localX, int localY, int localZ) {
+        setVoxel(localX, localY, localZ, Voxel.VoxelType.AIR);
+    }
+
+    public void rebuildMeshAndDataTextureIfNeeded() {
+        if (this.isDirty) {
+            Gdx.app.log("Chunk", "Rebuilding mesh and data texture for chunk at " + position);
+            generateInstanceData(); // Regenerate quad data
+            createDataTexture();    // Regenerate 3D texture
+            this.isDirty = false;
+        }
     }
 }
