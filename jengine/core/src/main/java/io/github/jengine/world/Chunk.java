@@ -277,7 +277,7 @@ public class Chunk implements Disposable {
         }
 
         com.badlogic.gdx.graphics.glutils.GLOnlyTextureData texData = new com.badlogic.gdx.graphics.glutils.GLOnlyTextureData(
-                CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, // width, height, depth
+                CHUNK_SIZE_X, CHUNK_SIZE_Y, // CHUNK_SIZE_Z, // width, height -no, depth
                 0, // mipmapLevel, set to 0 for base level
                 GL30.GL_R32F, // internalFormat (one float per voxel)
                 GL30.GL_RED,  // format (data is for red channel)
