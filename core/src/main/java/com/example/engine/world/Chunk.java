@@ -4,6 +4,13 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.FloatArray;
+import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.TextureData;
+import com.badlogic.gdx.graphics.GL30; // For GL_R32F etc.
+import java.nio.FloatBuffer;
+import com.badlogic.gdx.utils.BufferUtils;
+import com.badlogic.gdx.Gdx; // Required for Gdx.gl30 calls
 
 public class Chunk implements Disposable {
     public static final int CHUNK_SIZE_X = 16;
@@ -15,15 +22,18 @@ public class Chunk implements Disposable {
     private Voxel[][][] voxels;
     private Vector3 position;
     private FloatArray instanceData;
-    boolean[][][] faceMerged;
+    boolean[][][][] faceMerged;
+    private Texture dataTexture;
+    private FloatBuffer voxelDataBuffer; // To hold data for the 3D texture
 
     public Chunk(Vector3 position) {
         this.position = position;
         voxels = new Voxel[CHUNK_SIZE_X][CHUNK_SIZE_Y][CHUNK_SIZE_Z];
         instanceData = new FloatArray(false, CHUNK_SIZE_X * CHUNK_SIZE_Y * CHUNK_SIZE_Z * 3 * FLOATS_PER_INSTANCE);
-        faceMerged = new boolean[CHUNK_SIZE_X][CHUNK_SIZE_Y][CHUNK_SIZE_Z];
+        faceMerged = new boolean[CHUNK_SIZE_X][CHUNK_SIZE_Y][CHUNK_SIZE_Z][6];
         initializeVoxels();
         generateInstanceData();
+        createDataTexture();
     }
 
     private void initializeVoxels() {
@@ -57,23 +67,27 @@ public class Chunk implements Disposable {
         return voxels[x][y][z].type;
     }
 
-    private boolean isVoxelProcessed(int x, int y, int z) {
+    private boolean isFaceProcessed(int x, int y, int z, int faceDirectionIndex) {
         if (x < 0 || x >= CHUNK_SIZE_X || y < 0 || y >= CHUNK_SIZE_Y || z < 0 || z >= CHUNK_SIZE_Z) {
-            return true;
+            return true; // Out of bounds voxels are considered processed to prevent quad extension.
         }
-        return faceMerged[x][y][z];
+        return faceMerged[x][y][z][faceDirectionIndex];
     }
 
-    private void markVoxelAsProcessed(int x, int y, int z) {
+    private void markFaceAsProcessed(int x, int y, int z, int faceDirectionIndex) {
         if (x < 0 || x >= CHUNK_SIZE_X || y < 0 || y >= CHUNK_SIZE_Y || z < 0 || z >= CHUNK_SIZE_Z) {
-            return;
+            return; // Out of bounds, nothing to mark.
         }
-        faceMerged[x][y][z] = true;
+        faceMerged[x][y][z][faceDirectionIndex] = true;
     }
 
     private void generateInstanceData() {
         instanceData.clear();
-        for(int i=0; i<CHUNK_SIZE_X; ++i) for(int j=0; j<CHUNK_SIZE_Y; ++j) for(int k=0; k<CHUNK_SIZE_Z; ++k) faceMerged[i][j][k] = false;
+        for(int i=0; i<CHUNK_SIZE_X; ++i)
+            for(int j=0; j<CHUNK_SIZE_Y; ++j)
+                for(int k=0; k<CHUNK_SIZE_Z; ++k)
+                    for (int l=0; l<6; ++l)
+                        faceMerged[i][j][k][l] = false;
 
         for (int x = 0; x < CHUNK_SIZE_X; x++) {
             for (int y = 0; y < CHUNK_SIZE_Y; y++) {
@@ -95,9 +109,7 @@ public class Chunk implements Disposable {
                         if (getVoxelTypeOrAir(nx, ny, nz) == Voxel.VoxelType.AIR) {
                             // Check if the base voxel of this potential quad has already been merged.
                             // This is a key part of the greedy meshing optimization.
-                            if (isVoxelProcessed(x,y,z)) { // This check should be more nuanced for faces.
-                                                            // A voxel might have one face merged but others not.
-                                                            // The current faceMerged flags the whole voxel.
+                            if (isFaceProcessed(x,y,z,d)) {
                                 continue;
                             }
 
@@ -112,7 +124,7 @@ public class Chunk implements Disposable {
                                 while (y + quadPrimaryAxisLength < CHUNK_SIZE_Y &&
                                        getVoxelTypeOrAir(x, y + quadPrimaryAxisLength, z) == currentType &&
                                        getVoxelTypeOrAir(x + dir[0], y + quadPrimaryAxisLength, z) == Voxel.VoxelType.AIR &&
-                                       !isVoxelProcessed(x,y+quadPrimaryAxisLength,z)) {
+                                       !isFaceProcessed(x,y+quadPrimaryAxisLength,z,d)) {
                                     quadPrimaryAxisLength++;
                                 }
                                 // Expand along Z (secondary)
@@ -121,7 +133,7 @@ public class Chunk implements Disposable {
                                     for (int k = 0; k < quadPrimaryAxisLength; k++) {
                                         if (getVoxelTypeOrAir(x, y+k, z+quadSecondaryAxisLength) != currentType ||
                                             getVoxelTypeOrAir(x+dir[0], y+k, z+quadSecondaryAxisLength) != Voxel.VoxelType.AIR ||
-                                            isVoxelProcessed(x,y+k,z+quadSecondaryAxisLength)) {
+                                            isFaceProcessed(x,y+k,z+quadSecondaryAxisLength,d)) {
                                             canExpandSecondary = false; break;
                                         }
                                     }
@@ -132,7 +144,7 @@ public class Chunk implements Disposable {
                                 while (x + quadPrimaryAxisLength < CHUNK_SIZE_X &&
                                        getVoxelTypeOrAir(x + quadPrimaryAxisLength, y, z) == currentType &&
                                        getVoxelTypeOrAir(x + quadPrimaryAxisLength, y + dir[1], z) == Voxel.VoxelType.AIR &&
-                                       !isVoxelProcessed(x+quadPrimaryAxisLength,y,z)) {
+                                       !isFaceProcessed(x+quadPrimaryAxisLength,y,z,d)) {
                                     quadPrimaryAxisLength++;
                                 }
                                 // Expand along Z (secondary)
@@ -141,7 +153,7 @@ public class Chunk implements Disposable {
                                     for (int k = 0; k < quadPrimaryAxisLength; k++) {
                                         if (getVoxelTypeOrAir(x+k, y, z+quadSecondaryAxisLength) != currentType ||
                                             getVoxelTypeOrAir(x+k, y+dir[1], z+quadSecondaryAxisLength) != Voxel.VoxelType.AIR ||
-                                            isVoxelProcessed(x+k,y,z+quadSecondaryAxisLength)) {
+                                            isFaceProcessed(x+k,y,z+quadSecondaryAxisLength,d)) {
                                             canExpandSecondary = false; break;
                                         }
                                     }
@@ -152,7 +164,7 @@ public class Chunk implements Disposable {
                                 while (x + quadPrimaryAxisLength < CHUNK_SIZE_X &&
                                        getVoxelTypeOrAir(x + quadPrimaryAxisLength, y, z) == currentType &&
                                        getVoxelTypeOrAir(x + quadPrimaryAxisLength, y, z + dir[2]) == Voxel.VoxelType.AIR &&
-                                       !isVoxelProcessed(x+quadPrimaryAxisLength,y,z)) {
+                                       !isFaceProcessed(x+quadPrimaryAxisLength,y,z,d)) {
                                     quadPrimaryAxisLength++;
                                 }
                                 // Expand along Y (secondary)
@@ -161,7 +173,7 @@ public class Chunk implements Disposable {
                                      for (int k = 0; k < quadPrimaryAxisLength; k++) {
                                          if (getVoxelTypeOrAir(x+k, y+quadSecondaryAxisLength, z) != currentType ||
                                              getVoxelTypeOrAir(x+k, y+quadSecondaryAxisLength, z+dir[2]) != Voxel.VoxelType.AIR ||
-                                             isVoxelProcessed(x+k,y+quadSecondaryAxisLength,z)) {
+                                             isFaceProcessed(x+k,y+quadSecondaryAxisLength,z,d)) {
                                              canExpandSecondary = false; break;
                                          }
                                      }
@@ -204,15 +216,20 @@ public class Chunk implements Disposable {
                                 instanceData.add(quadSecondaryAxisLength * VOXEL_SIZE); // Length along Y
                             }
 
-                            instanceData.add(baseColor.r); instanceData.add(baseColor.g); instanceData.add(baseColor.b);
+                            // instanceData.add(baseColor.r); instanceData.add(baseColor.g); instanceData.add(baseColor.b); // Removed color
+                            // Add normalized texture coordinates for the original voxel (x,y,z) that this quad face belongs to
+                            instanceData.add(x / (float)CHUNK_SIZE_X);
+                            instanceData.add(y / (float)CHUNK_SIZE_Y);
+                            instanceData.add(z / (float)CHUNK_SIZE_Z);
+
                             instanceData.add((float)d); // Normal index (0-5)
 
                             // Mark all voxels covered by this quad as processed
                             for (int i = 0; i < quadPrimaryAxisLength; i++) {
                                 for (int j = 0; j < quadSecondaryAxisLength; j++) {
-                                    if (plane == 0) { markVoxelAsProcessed(x,y + i,z + j); }
-                                    else if (plane == 1) { markVoxelAsProcessed(x + i,y,z + j); }
-                                    else { markVoxelAsProcessed(x + i,y + j,z); }
+                                    if (plane == 0) { markFaceAsProcessed(x,y + i,z + j,d); }
+                                    else if (plane == 1) { markFaceAsProcessed(x + i,y,z + j,d); }
+                                    else { markFaceAsProcessed(x + i,y + j,z,d); }
                                 }
                             }
                         }
@@ -220,6 +237,7 @@ public class Chunk implements Disposable {
                 }
             }
         }
+        System.out.println("Chunk at " + this.position + " generated " + getNumInstances() + " instances (quads).");
     }
 
     public FloatArray getInstanceData() { return instanceData; }
@@ -235,5 +253,57 @@ public class Chunk implements Disposable {
         }
     }
     public Vector3 getPosition() { return position; }
-    @Override public void dispose() { /* instanceData FloatArray is GC'd, no LibGDX disposables here */ }
+
+    private void createDataTexture() {
+        // Prepare FloatBuffer for 3D texture (width, height, depth, 1 component per voxel for type)
+        // CHUNK_SIZE_X * CHUNK_SIZE_Y * CHUNK_SIZE_Z floats
+        voxelDataBuffer = BufferUtils.newFloatBuffer(CHUNK_SIZE_X * CHUNK_SIZE_Y * CHUNK_SIZE_Z);
+
+        for (int z = 0; z < CHUNK_SIZE_Z; z++) { // Order: Z slices, then Y rows, then X columns for standard texture layout
+            for (int y = 0; y < CHUNK_SIZE_Y; y++) {
+                for (int x = 0; x < CHUNK_SIZE_X; x++) {
+                    voxelDataBuffer.put(Voxel.getVoxelTypeAsFloat(voxels[x][y][z].type));
+                }
+            }
+        }
+        voxelDataBuffer.flip(); // Prepare buffer for reading by GL
+
+        // Clean up old texture if any (e.g. during chunk regeneration)
+        if (dataTexture != null) {
+            dataTexture.dispose();
+        }
+
+        com.badlogic.gdx.graphics.glutils.GLOnlyTextureData texData = new com.badlogic.gdx.graphics.glutils.GLOnlyTextureData(
+                CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, // width, height, depth
+                0, // mipmapLevel, set to 0 for base level
+                GL30.GL_R32F, // internalFormat (one float per voxel)
+                GL30.GL_RED,  // format (data is for red channel)
+                GL30.GL_FLOAT // type (data is float)
+        );
+
+        dataTexture = new Texture(texData);
+        // Now upload the data
+        Gdx.gl30.glBindTexture(GL30.GL_TEXTURE_3D, dataTexture.getTextureObjectHandle());
+        Gdx.gl30.glTexImage3D(GL30.GL_TEXTURE_3D, 0, GL30.GL_R32F,
+                CHUNK_SIZE_X, CHUNK_SIZE_Y, CHUNK_SIZE_Z, 0,
+                GL30.GL_RED, GL30.GL_FLOAT, voxelDataBuffer);
+
+        // Set texture parameters
+        dataTexture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        dataTexture.setWrap(Texture.TextureWrap.ClampToEdge, Texture.TextureWrap.ClampToEdge);
+
+        Gdx.gl30.glBindTexture(GL30.GL_TEXTURE_3D, 0); // Unbind
+    }
+
+    public Texture getDataTexture() {
+        return dataTexture;
+    }
+
+    @Override
+    public void dispose() {
+        if (dataTexture != null) {
+            dataTexture.dispose();
+        }
+        // instanceData FloatArray is GC'd, no LibGDX disposables here
+    }
 }

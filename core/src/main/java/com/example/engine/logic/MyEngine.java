@@ -56,7 +56,7 @@ public class MyEngine extends ApplicationAdapter {
         instanceAttributes = new VertexAttributes(
             new VertexAttribute(VertexAttributes.Usage.Generic, 3, "a_instance_offset", 0),
             new VertexAttribute(VertexAttributes.Usage.Generic, 2, "a_instance_size", 1),
-            new VertexAttribute(VertexAttributes.Usage.Generic, 3, "a_instance_color", 2),
+            new VertexAttribute(VertexAttributes.Usage.Generic, 3, "a_voxel_tex_coord", 2), // Index 2 for attribute binding location
             new VertexAttribute(VertexAttributes.Usage.Generic, 1, "a_instance_normal_idx", 3)
         );
         // Ensure VBO uses GL_STATIC_DRAW if data changes infrequently per frame, or GL_DYNAMIC_DRAW if it changes often.
@@ -100,6 +100,13 @@ public class MyEngine extends ApplicationAdapter {
 
         for (com.example.engine.world.Chunk chunk : world.getChunks().values()) {
             if (chunk.getNumInstances() == 0) continue;
+
+            // Get and bind the chunk's data texture
+            com.badlogic.gdx.graphics.Texture dataTexture = chunk.getDataTexture(); // Corrected import for Texture
+            if (dataTexture != null) { // Should always exist if chunk is valid
+                dataTexture.bind(1); // Bind to texture unit 1
+                instanceShader.setUniformi("u_voxelDataTexture", 1); // Tell sampler u_voxelDataTexture to use texture unit 1
+            }
 
             int numInstancesInChunk = chunk.getNumInstances();
             int numFloatsToCopy = numInstancesInChunk * Chunk.FLOATS_PER_INSTANCE;
