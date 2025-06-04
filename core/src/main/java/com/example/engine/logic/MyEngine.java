@@ -12,13 +12,14 @@ import com.badlogic.gdx.graphics.g3d.utils.CameraInputController;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.VertexBufferObject;
 import com.example.engine.world.Chunk;
-import com.example.engine.world.World;
+import com.example.engine.world.Level; // Added import
+import com.example.engine.entities.Player; // Added import
 
 public class MyEngine extends ApplicationAdapter {
     private PerspectiveCamera camera;
     private CameraInputController cameraController;
     private ShaderProgram instanceShader;
-    private World world;
+    private com.example.engine.world.Level level; // Changed type to Level
     private Mesh unitQuadMesh;
     private VertexBufferObject instanceDataVBO;
     private final int MAX_INSTANCES_PER_DRAW = 30000;
@@ -27,11 +28,17 @@ public class MyEngine extends ApplicationAdapter {
 
     @Override
     public void create() {
+        level = new com.example.engine.world.Level(); // Create the level instance
+
         camera = new PerspectiveCamera(67, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-        camera.position.set(Chunk.CHUNK_SIZE_X * 1.5f, Chunk.CHUNK_SIZE_Y * 2.5f, Chunk.CHUNK_SIZE_Z * 1.5f);
-        camera.lookAt(Chunk.CHUNK_SIZE_X, Chunk.CHUNK_SIZE_Y / 2f, Chunk.CHUNK_SIZE_Z);
+        // Adjust camera position and lookAt based on Level's setup
+        com.example.engine.entities.Player player = level.getPlayer();
+        camera.position.set(player.getPosition().x + Chunk.CHUNK_SIZE_X * 0.75f,
+                            player.getPosition().y + Chunk.CHUNK_SIZE_Y * 0.5f, // Slightly above player
+                            player.getPosition().z + Chunk.CHUNK_SIZE_Z * 0.75f);
+        camera.lookAt(player.getPosition().x, player.getPosition().y, player.getPosition().z);
         camera.near = 0.1f;
-        camera.far = 500f;
+        camera.far = 500f; // Kept original far plane
         camera.update();
 
         cameraController = new CameraInputController(camera);
@@ -63,7 +70,7 @@ public class MyEngine extends ApplicationAdapter {
         // For instance data that is rebuilt per frame or often, GL_DYNAMIC_DRAW is appropriate.
         instanceDataVBO = new VertexBufferObject(true, MAX_INSTANCES_PER_DRAW, instanceAttributes); // true for dynamic VBO
 
-        world = new World();
+        // world = new World(); // Removed old world initialization
     }
 
     private void createUnitQuadMesh() {
@@ -86,6 +93,9 @@ public class MyEngine extends ApplicationAdapter {
     @Override
     public void render() {
         cameraController.update();
+
+        level.update(Gdx.graphics.getDeltaTime()); // Update level logic
+
         Gdx.gl.glClearColor(0.3f, 0.5f, 0.8f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
         Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
@@ -98,7 +108,7 @@ public class MyEngine extends ApplicationAdapter {
         unitQuadMesh.bind(instanceShader);
         instanceDataVBO.bind(instanceShader);
 
-        for (com.example.engine.world.Chunk chunk : world.getChunks().values()) {
+        for (com.example.engine.world.Chunk chunk : level.getWorld().getChunks().values()) { // Use level.getWorld()
             if (chunk.getNumInstances() == 0) continue;
 
             // Get and bind the chunk's data texture
@@ -162,7 +172,9 @@ public class MyEngine extends ApplicationAdapter {
         if (instanceShader != null) instanceShader.dispose();
         if (unitQuadMesh != null) unitQuadMesh.dispose();
         if (instanceDataVBO != null) instanceDataVBO.dispose();
-        if (world != null) world.dispose();
+        if (level != null && level.getWorld() != null) { // Updated dispose for level's world
+            level.getWorld().dispose();
+        }
          if(Gdx.app != null) Gdx.app.log("MyEngine", "Disposed all resources.");
     }
 }
