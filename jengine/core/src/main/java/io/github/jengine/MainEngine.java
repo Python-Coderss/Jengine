@@ -34,6 +34,15 @@ public class MainEngine extends ApplicationAdapter {
         camera = new PerspectiveCamera(67, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         // Player and Level will be created first to get initial positions
         level = new Level();
+
+        // Initialize graphics resources for all chunks after level creation
+        if (level != null && level.getWorld() != null && level.getWorld().getChunks() != null) {
+            for (Chunk chunk : level.getWorld().getChunks().values()) {
+                if (chunk != null) {
+                    chunk.initializeGraphicsResources();
+                }
+            }
+        }
         Player player = level.getPlayer();
 
         // Set camera position based on player's starting position (adjust as needed)
@@ -103,12 +112,20 @@ public class MainEngine extends ApplicationAdapter {
         instanceDataVBO.bind(instanceShader);
 
         for (Chunk chunk : level.getWorld().getChunks().values()) {
-            if (chunk == null || chunk.getNumInstances() == 0) continue;
+            // Add a more explicit check and log if a renderable chunk has no texture
+            if (chunk == null || chunk.getNumInstances() == 0) {
+                continue;
+            }
 
             Texture dataTexture = chunk.getDataTexture();
             if (dataTexture != null) {
                 dataTexture.bind(1); // Bind to texture unit 1
                 instanceShader.setUniformi("u_voxelDataTexture", 1);
+            } else {
+                // This case should ideally not be hit if initialization in create() worked.
+                Gdx.app.log("MainEngine.render - WARN", "Chunk at " + chunk.getPosition() + " has null dataTexture during render. Skipping texture binding.");
+                // Optionally, skip rendering this chunk entirely if texture is critical
+                // continue;
             }
 
             int numInstancesInChunk = chunk.getNumInstances();

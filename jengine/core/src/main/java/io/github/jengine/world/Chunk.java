@@ -27,6 +27,7 @@ public class Chunk implements Disposable {
     private Texture dataTexture;
     private FloatBuffer voxelDataBuffer; // To hold data for the 3D texture
     private boolean isDirty;
+    private boolean graphicsInitialized = false;
 
     public Chunk(Vector3 position) {
         this.position = position;
@@ -36,7 +37,7 @@ public class Chunk implements Disposable {
         this.isDirty = false;
         initializeVoxels();
         generateInstanceData();
-        createDataTexture();
+        // createDataTexture(); // Removed from constructor
     }
 
     private void initializeVoxels() {
@@ -299,7 +300,18 @@ public class Chunk implements Disposable {
     }
 
     public Texture getDataTexture() {
+        if (!graphicsInitialized) {
+            // Gdx.app.log("Chunk", "getDataTexture() called before graphics initialization for chunk at " + position);
+            return null; // Or handle appropriately, e.g., return a default texture or throw an exception
+        }
         return dataTexture;
+    }
+
+    public void initializeGraphicsResources() {
+        if (!this.graphicsInitialized) {
+            createDataTexture();
+            this.graphicsInitialized = true;
+        }
     }
 
     @Override
@@ -340,8 +352,15 @@ public class Chunk implements Disposable {
     public void rebuildMeshAndDataTextureIfNeeded() {
         if (this.isDirty) {
             Gdx.app.log("Chunk", "Rebuilding mesh and data texture for chunk at " + position);
-            generateInstanceData(); // Regenerate quad data
+            generateInstanceData(); // Regenerate quad data (doesn't use GL resources)
+
+            // Dispose existing texture before creating a new one if it exists
+            if (dataTexture != null) {
+                dataTexture.dispose();
+                dataTexture = null;
+            }
             createDataTexture();    // Regenerate 3D texture
+            this.graphicsInitialized = true; // Mark as initialized (or re-initialized)
             this.isDirty = false;
         }
     }
